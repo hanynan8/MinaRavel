@@ -1,631 +1,443 @@
-'use client';
-import { useState, useEffect, useRef } from 'react';
-import { useLanguage } from '@/contexts/LanguageContext';
+"use client";
 
-// ─────────────────────────────────────────────
-// 👇 ضع رابط اللوجو هنا — غيّره متى تشاء
-const LOGO_URL = 'https://github.com/hanynan8/Chellange/blob/main/WhatsApp%20Image%202026-03-27%20at%208.01.50%20PM.jpeg?raw=true'; // مثال: '/logo.svg' أو 'https://...'
-// ─────────────────────────────────────────────
+import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useLanguage } from "@/contexts/LanguageContext";
 
-export default function Home() {
-  const { language, toggleLanguage, isRTL } = useLanguage();
-
+/* ─────────────────────────────────────────
+   FETCH HOOK
+───────────────────────────────────────── */
+function useHomeData() {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [activeVehicle, setActiveVehicle] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const scrollRef = useRef(null);
-
   useEffect(() => {
-    fetch('/api/data?collection=home')
-      .then(res => {
-        if (!res.ok) throw new Error('Network response was not ok');
-        return res.json();
+    fetch("/api/data?collection=home")
+      .then((r) => r.json())
+      .then((res) => {
+        const doc = Array.isArray(res) ? res[0] : res;
+        setData(doc);
       })
-      .then(result => {
-        console.log('API Response:', result);
-
-        let extracted = null;
-
-        if (result?.home?.[0]?.home?.[0]) {
-          extracted = result.home[0].home[0];
-        } else if (result?.home?.[0]) {
-          extracted = result.home[0];
-        } else if (result?.[0]?.home?.[0]) {
-          extracted = result[0].home[0];
-        } else if (result?.[0]) {
-          extracted = result[0];
-        } else if (result?.data?.home?.[0]?.home?.[0]) {
-          extracted = result.data.home[0].home[0];
-        } else if (result?.data?.home?.[0]) {
-          extracted = result.data.home[0];
-        } else if (result?.company) {
-          extracted = result;
-        }
-
-        if (extracted && extracted.company) {
-          setData(extracted);
-        } else {
-          throw new Error('Data structure mismatch - check console for details');
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Fetch error:', err);
-        setError(err.message);
-        setLoading(false);
-      });
+      .catch(console.error);
   }, []);
+  return data;
+}
 
-  // Hero slider auto-play
+/* ─────────────────────────────────────────
+   SCROLL REVEAL HOOK
+───────────────────────────────────────── */
+function useReveal(threshold = 0.1) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
   useEffect(() => {
-    if (!data?.heroSlider?.slides) return;
-    const timer = setInterval(() => {
-      setCurrentSlide(prev => (prev + 1) % data.heroSlider.slides.length);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [data]);
-
-  // Close menu on resize to desktop
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth >= 768) setMenuOpen(false);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    if (!ref.current) return;
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } },
+      { threshold }
+    );
+    obs.observe(ref.current);
+    return () => obs.disconnect();
   }, []);
+  return [ref, visible];
+}
 
-  const toWesternNumerals = (str) => {
-    if (!str) return '';
-    const map = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
-    return str.replace(/[٠-٩]/g, d => map[d]);
-  };
+/* ═══════════════════════════════════════
+   ROOT PAGE
+═══════════════════════════════════════ */
+export default function HomePage() {
+  const data = useHomeData();
+  const { language: lang } = useLanguage();
 
-  if (loading) {
+  if (!data) {
     return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
-          <span className="text-zinc-500 text-sm">جاري التحميل...</span>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-black border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-bold tracking-[0.2em] uppercase text-gray-400">Loading</span>
         </div>
       </div>
     );
   }
 
-  if (error || !data) {
-    return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center px-4">
-        <div className="text-center">
-          <span className="text-red-500 text-lg">خطأ في تحميل البيانات</span>
-          {error && <p className="text-zinc-500 text-sm mt-2">{error}</p>}
-        </div>
-      </div>
-    );
-  }
-
-  const lang = language; // 'ar' or 'en'
-
-  const company     = data.company?.[lang]     || data.company?.ar     || {};
-  const navigation  = data.navigation?.[lang]  || data.navigation?.ar  || [];
-  const hero        = data.hero?.[lang]        || data.hero?.ar        || {};
-  const heroSlider  = data.heroSlider?.slides  || [];
-  const services    = data.services?.[lang]    || data.services?.ar    || {};
-  const fleet       = data.fleet?.[lang]       || data.fleet?.ar       || {};
-  const whyChooseUs = data.whyChooseUs?.[lang] || data.whyChooseUs?.ar || {};
-  const testimonials= data.testimonials?.[lang]|| data.testimonials?.ar|| {};
-  const cta         = data.cta?.[lang]         || data.cta?.ar         || {};
-  const footer      = data.footer?.[lang]      || data.footer?.ar      || {};
-
-  const phoneLink    = toWesternNumerals(company.phone);
-  const whatsappLink = toWesternNumerals(company.whatsapp);
+  const t     = data.i18n[lang];
+  const isRTL = lang === "ar";
 
   return (
-    <div className="min-h-screen bg-white" dir={isRTL ? 'rtl' : 'ltr'} style={{ fontFamily: isRTL ? "'Cairo', 'Tajawal', sans-serif" : "'Inter', 'Segoe UI', sans-serif" }}>
+    <>
+      <style>{STYLES}</style>
+      <div
+        dir={isRTL ? "rtl" : "ltr"}
+        className="min-h-screen bg-white text-[#0a0a0a] overflow-x-hidden"
+        style={{ fontFamily: "'DM Sans', 'Tajawal', sans-serif" }}
+      >
+        <Hero     data={data} t={t} />
+        <Why      data={data} t={t} />
+        <Services data={data} t={t} />
+        <Stats    data={data} t={t} />
+      </div>
+    </>
+  );
+}
 
-      {/* ── NAVBAR ── */}
-      <header className="fixed w-full top-0 z-50 bg-white/95 backdrop-blur border-b border-zinc-100">
-        <nav className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-
-          {/* ── LOGO ── */}
-          <a href="#home" className="flex items-center gap-2.5 flex-shrink-0">
-            <img
-              src={LOGO_URL}
-              alt={company.name}
-              className="h-11 sm:h-12 w-11 sm:w-12 object-cover rounded-full ring-2 ring-amber-400 ring-offset-1"
-            />
-          </a>
-
-          {/* Desktop nav links */}
-          <ul className="hidden md:flex items-center gap-5 lg:gap-8 flex-1 justify-center">
-            {navigation.map((item, i) => (
-              <li key={i}>
-                <a href={item.link} className="text-sm text-zinc-500 hover:text-zinc-900 transition-colors whitespace-nowrap">
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-
-          {/* Right side: lang toggle + CTA + burger */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-
-            {/* Language Toggle Button */}
-            <button
-              onClick={toggleLanguage}
-              title={language === 'ar' ? 'Switch to English' : 'التبديل للعربية'}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-200 hover:border-zinc-400 text-zinc-600 hover:text-zinc-900 transition-all text-xs sm:text-sm font-medium bg-white hover:bg-zinc-50"
-            >
-              {/* Globe icon */}
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <circle cx="12" cy="12" r="9" />
-                <path d="M3.6 9h16.8M3.6 15h16.8M12 3a13.5 13.5 0 0 1 0 18M12 3a13.5 13.5 0 0 0 0 18" />
-              </svg>
-              <span className="leading-none">{language === 'ar' ? 'EN' : 'ع'}</span>
-            </button>
-
-            {/* Book now CTA */}
-            <a
-              href={`tel:${phoneLink}`}
-              className="text-xs sm:text-sm bg-zinc-900 hover:bg-zinc-700 text-white px-4 sm:px-5 py-2 rounded-full transition-colors whitespace-nowrap"
-            >
-              {language === 'ar' ? 'احجز الآن' : 'Book Now'}
-            </a>
-
-            {/* Mobile hamburger */}
-            <button
-              onClick={() => setMenuOpen(prev => !prev)}
-              className="md:hidden flex flex-col justify-center items-center w-9 h-9 gap-1.5 rounded-lg hover:bg-zinc-100 transition-colors"
-              aria-label={language === 'ar' ? 'القائمة' : 'Menu'}
-            >
-              <span className={`block w-5 h-0.5 bg-zinc-700 transition-all duration-300 ${menuOpen ? 'rotate-45 translate-y-2' : ''}`} />
-              <span className={`block w-5 h-0.5 bg-zinc-700 transition-all duration-300 ${menuOpen ? 'opacity-0' : ''}`} />
-              <span className={`block w-5 h-0.5 bg-zinc-700 transition-all duration-300 ${menuOpen ? '-rotate-45 -translate-y-2' : ''}`} />
-            </button>
-          </div>
-        </nav>
-
-        {/* Mobile dropdown menu */}
-        <div className={`md:hidden overflow-hidden transition-all duration-300 ${menuOpen ? 'max-h-96 border-t border-zinc-100' : 'max-h-0'}`}>
-          <ul className="bg-white px-4 py-3 space-y-1">
-            {navigation.map((item, i) => (
-              <li key={i}>
-                <a
-                  href={item.link}
-                  onClick={() => setMenuOpen(false)}
-                  className="block text-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 px-3 py-2.5 rounded-lg transition-colors"
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </header>
-{/* ── HERO ── */}
-      <section id="home" className="pt-16 min-h-screen flex flex-col justify-center relative overflow-hidden">
-
-        {/* Background image */}
-        <img
-          src="https://cdn.jsdelivr.net/gh/MinaRavel12345/MinaWebsite@main/WhatsApp%20Image%202026-03-27%20at%207.59.35%20PM%20(3).jpeg"
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover"
+/* ═══════════════════════════════════════
+   HERO
+═══════════════════════════════════════ */
+function Hero({ data, t }) {
+  return (
+    <section className="relative min-h-screen flex items-end overflow-hidden bg-[#f4f4f4]">
+      {/* Full-bleed background image */}
+      <div className="absolute inset-0 z-0">
+        <Image
+          src={data.hero.backgroundImage}
+          alt="hero"
+          fill
+          className="object-cover object-center"
+          priority
+          unoptimized
         />
+        {/* White fade left-to-right */}
+        <div className="absolute inset-0 bg-gradient-to-r from-white via-white/90 to-transparent" />
+        {/* Bottom fade to white */}
+        <div className="absolute bottom-0 inset-x-0 h-48 bg-gradient-to-t from-white to-transparent" />
+      </div>
 
-        {/* Dark overlay */}
-        <div className="absolute inset-0 bg-black/60" />
+      <div className="relative z-10 max-w-7xl mx-auto px-6 pb-28 pt-40 w-full">
+        {/* Overline */}
+        <div className="flex items-center gap-3 mb-6 animate-fadein">
+          <div className="w-8 h-px bg-[#C8102E]" />
+          <span className="text-xs font-bold tracking-[0.25em] uppercase text-[#C8102E]">
+            {t.hero.badge}
+          </span>
+        </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24 grid md:grid-cols-2 gap-10 lg:gap-16 items-center">
+        {/* Headline */}
+        <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[88px] font-black leading-[0.92] tracking-tighter max-w-3xl mb-8 animate-fadein-up">
+          {t.hero.headline.split(",").map((chunk, i, arr) =>
+            i === arr.length - 1 ? (
+              <span key={i} className="text-[#C8102E]">{chunk}</span>
+            ) : (
+              <span key={i}>{chunk},<br /></span>
+            )
+          )}
+        </h1>
 
-          {/* Text block */}
-          <div className="text-white space-y-5 sm:space-y-6 order-2 md:order-1">
-            <p className="text-amber-400 text-xs font-medium tracking-widest uppercase">
-              {company.name}
-            </p>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-tight text-white">
-              {hero.title}
-            </h1>
-            <p className="text-zinc-300 text-base sm:text-lg leading-relaxed max-w-md">
-              {hero.subtitle}
-            </p>
-            <div className="flex flex-wrap gap-3 pt-2">
-              <a
-                href="#fleet"
-                className="bg-amber-400 hover:bg-amber-300 text-zinc-900 px-6 sm:px-7 py-3 rounded-full text-sm font-semibold transition-colors"
+        {/* Subheadline */}
+        <p className="text-gray-500 text-lg max-w-lg mb-10 leading-relaxed animate-fadein-up2">
+          {t.hero.subheadline}
+        </p>
+
+        {/* CTAs */}
+        <div className="flex flex-wrap gap-4 animate-fadein-up2">
+          <Link
+            href={data.hero.ctaConsultationHref}
+            className="inline-flex items-center gap-2 bg-[#C8102E] text-white font-bold px-8 py-4 rounded-lg text-base hover:bg-[#a50d24] transition-colors shadow-lg shadow-red-900/20"
+          >
+            {t.hero.ctaConsultation}
+            <ArrowRight size={16} />
+          </Link>
+          <Link
+            href={data.hero.ctaApplyHref}
+            className="inline-flex items-center gap-2 border-2 border-[#0a0a0a] text-[#0a0a0a] font-bold px-8 py-4 rounded-lg text-base hover:bg-[#0a0a0a] hover:text-white transition-all"
+          >
+            {t.hero.ctaApply}
+          </Link>
+        </div>
+      </div>
+
+      {/* Scroll indicator */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2 animate-bounce">
+        <div className="w-px h-10 bg-gray-300" />
+        <span className="text-[10px] tracking-[0.2em] uppercase text-gray-400 font-medium">Scroll</span>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════
+   WHY SECTION
+═══════════════════════════════════════ */
+function Why({ data, t }) {
+  const [ref, visible] = useReveal();
+
+  return (
+    <section ref={ref} className="py-28 px-6 bg-white">
+      <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-20 items-center">
+
+        {/* Image */}
+        <div
+          className={`relative overflow-hidden rounded-2xl aspect-[4/3] transition-all duration-700 ease-out ${
+            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          }`}
+        >
+          <Image
+            src={data.why.image}
+            alt="Why Edumaster"
+            fill
+            className="object-cover"
+            unoptimized
+          />
+          {/* Red accent bottom bar */}
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#C8102E]" />
+        </div>
+
+        {/* Content */}
+        <div>
+          <Label text="Why Us" visible={visible} />
+          <h2
+            className={`text-4xl sm:text-5xl font-black tracking-tight leading-tight mb-10 transition-all duration-700 delay-100 ${
+              visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+            }`}
+          >
+            {t.why.title}
+          </h2>
+
+          <ul className="flex flex-col divide-y divide-gray-100">
+            {t.why.points.map((point, i) => (
+              <li
+                key={i}
+                className={`flex items-center gap-5 py-4 transition-all duration-500 ${
+                  visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-6"
+                }`}
+                style={{ transitionDelay: `${150 + i * 70}ms` }}
               >
-                {hero.ctaButton}
-              </a>
-              <a
-                href={`tel:${phoneLink}`}
-                className="border border-white/40 hover:border-white text-white px-6 sm:px-7 py-3 rounded-full text-sm font-semibold transition-colors backdrop-blur-sm"
-              >
-                {hero.secondaryButton}
-              </a>
-            </div>
-
-            {/* Stats */}
-            {hero.stats && hero.stats.length > 0 && (
-              <div className="flex flex-wrap gap-6 sm:gap-10 pt-6 border-t border-white/20">
-                {hero.stats.map((stat, i) => (
-                  <div key={i}>
-                    <div className="text-xl sm:text-2xl font-bold text-amber-400">{stat.value}</div>
-                    <div className="text-xs text-zinc-300 mt-1">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Hero Slider */}
-          {heroSlider.length > 0 && (
-            <div className="relative order-1 md:order-2">
-              <div
-                className="relative overflow-hidden rounded-xl sm:rounded-2xl w-full"
-                style={{ height: '360px' }}
-              >
-                {heroSlider.map((slide, index) => (
-                  <div
-                    key={slide.id}
-                    className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
-                      index === currentSlide ? 'opacity-100 scale-100' : 'opacity-0 scale-105'
-                    }`}
-                  >
-                    <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
-                    <img
-                      src={slide.image}
-                      alt={slide.ar?.title || ''}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 z-20 flex flex-col justify-end p-5 sm:p-8">
-                      <span className="text-xs bg-amber-400 text-zinc-900 font-bold px-3 py-1 rounded-full inline-block self-start mb-2 sm:mb-3">
-                        {slide.ar?.badge}
-                      </span>
-                      <h3 className="text-base sm:text-xl font-bold text-white mb-1">{slide.ar?.title}</h3>
-                      <p className="text-zinc-300 text-xs sm:text-sm mb-2 sm:mb-3">{slide.ar?.description}</p>
-                      <div className="flex items-baseline gap-3">
-                        <span className="text-xl sm:text-2xl font-bold text-amber-400">
-                          {slide.ar?.price} {slide.ar?.currency}
-                        </span>
-                        {slide.ar?.oldPrice && (
-                          <span className="text-zinc-500 line-through text-xs sm:text-sm">{slide.ar.oldPrice}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Dots */}
-              <div className="flex gap-2 mt-3 sm:mt-4 justify-center">
-                {heroSlider.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setCurrentSlide(i)}
-                    aria-label={`الذهاب إلى الشريحة ${i + 1}`}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${
-                      i === currentSlide ? 'w-6 bg-amber-400' : 'w-1.5 bg-white/40'
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+                <span className="shrink-0 w-7 h-7 rounded-full border-2 border-[#C8102E] flex items-center justify-center">
+                  <Check size={12} color="#C8102E" />
+                </span>
+                <span className="text-gray-700 font-medium text-[15px] leading-snug">
+                  {point}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* ── FLEET ── */}
-      <section id="fleet" className="bg-zinc-50 py-16 sm:py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="mb-10 sm:mb-12">
-            <p className="text-amber-500 text-xs font-bold tracking-widest uppercase mb-2">أسطولنا</p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-zinc-900">{fleet.title}</h2>
-            <p className="text-zinc-500 mt-2 text-sm sm:text-base">{fleet.subtitle}</p>
-          </div>
+/* ═══════════════════════════════════════
+   SERVICES
+═══════════════════════════════════════ */
+function Services({ data, t }) {
+  const [ref, visible] = useReveal();
 
-          {fleet.vehicles && fleet.vehicles.length > 0 && (
-            <>
-              {/* Tabs — scrollable on small screens */}
-              <div className="flex gap-2 mb-6 sm:mb-8 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0"
-                   style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {fleet.vehicles.map((v, i) => (
-                  <button
-                    key={v.id}
-                    onClick={() => setActiveVehicle(i)}
-                    className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap transition-all flex-shrink-0 ${
-                      activeVehicle === i
-                        ? 'bg-zinc-900 text-white'
-                        : 'bg-white border border-zinc-200 text-zinc-600 hover:border-zinc-400'
-                    }`}
-                  >
-                    <span>{v.icon}</span>
-                    {v.name}
-                  </button>
-                ))}
-              </div>
+  const merged = data.services.items.map((item) => ({
+    ...item,
+    ...t.services.items[item.id],
+  }));
 
-              {/* Active vehicle card */}
-              {fleet.vehicles[activeVehicle] && (() => {
-                const v = fleet.vehicles[activeVehicle];
-                return (
-                  <div className="rounded-xl sm:rounded-2xl overflow-hidden bg-white shadow-sm border border-zinc-100">
-                    <div className="grid md:grid-cols-5">
-                      {/* Image */}
-<div className="md:col-span-3 h-56 sm:h-72 md:h-auto min-h-0 md:min-h-[320px] relative overflow-hidden">
-  {v.image ? (
-    <img
-      src={v.image}
-      alt={v.name}
-      className="w-full h-full object-cover"
-    />
-  ) : (
-    <div className="w-full h-full flex items-center justify-center text-6xl sm:text-8xl"
-         style={{ background: 'linear-gradient(135deg, #18181b 0%, #3f3f46 100%)' }}>
-      {v.icon}
-    </div>
-  )}
-  <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-l from-white via-transparent to-transparent hidden md:block" />
-</div>
-                      {/* Info */}
-                      <div className="md:col-span-2 p-6 sm:p-10 flex flex-col justify-between">
-                        <div>
-                          <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">{v.icon}</div>
-                          <h3 className="text-xl sm:text-2xl font-bold text-zinc-900 mb-2">{v.name}</h3>
-                          <p className="text-zinc-500 text-sm leading-relaxed mb-4 sm:mb-6">{v.description}</p>
-                          <div className="space-y-2 sm:space-y-3">
-                            <div className="flex justify-between items-center py-2 sm:py-3 border-b border-zinc-100">
-                              <span className="text-sm text-zinc-500">السعة</span>
-                              <span className="text-sm font-semibold text-zinc-900">{v.capacity}</span>
-                            </div>
-                            <div className="flex justify-between items-center py-2 sm:py-3 border-b border-zinc-100">
-                              <span className="text-sm text-zinc-500">السعر</span>
-                              <span className="text-base sm:text-lg font-bold text-amber-500">{v.price}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <a
-                          href={`tel:${phoneLink}`}
-                          className="mt-6 sm:mt-8 block text-center bg-zinc-900 hover:bg-zinc-700 text-white py-3 rounded-full text-sm font-semibold transition-colors"
-                        >
-                          احجز هذه السيارة
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+  return (
+    <section ref={ref} className="py-28 px-6 bg-[#f7f7f7]">
+      <div className="max-w-7xl mx-auto">
 
-              {/* Thumbnail strip with scroll arrows */}
-              <div className="relative mt-4">
-                <button
-                  onClick={() => scrollRef.current?.scrollBy({ left: -160, behavior: 'smooth' })}
-                  className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white shadow rounded-full w-8 h-8 flex items-center justify-center text-zinc-700 text-lg"
-                  aria-label="تمرير لليسار"
-                >
-                  &#8249;
-                </button>
-
-                <div
-                  ref={scrollRef}
-                  className="flex gap-2 sm:gap-3 overflow-x-auto scroll-smooth px-10"
-                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                >
-                  {fleet.vehicles.map((v, i) => (
-<button
-  key={v.id}
-  onClick={() => setActiveVehicle(i)}
-  aria-label={`عرض ${v.name}`}
-  className={`flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-lg sm:rounded-xl overflow-hidden relative transition-all ${
-    activeVehicle === i ? 'ring-2 ring-zinc-900 ring-offset-2' : 'opacity-60 hover:opacity-100'
-  }`}
->
-  {v.image ? (
-    <img src={v.image} alt={v.name} className="w-full h-full object-cover" />
-  ) : (
-    <div className="w-full h-full flex items-center justify-center text-2xl"
-         style={{ background: 'linear-gradient(135deg,#18181b,#52525b)' }}>
-      {v.icon}
-    </div>
-  )}
-</button>
-                  ))}
-                </div>
-
-                <button
-                  onClick={() => scrollRef.current?.scrollBy({ left: 160, behavior: 'smooth' })}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white shadow rounded-full w-8 h-8 flex items-center justify-center text-zinc-700 text-lg"
-                  aria-label="تمرير لليمين"
-                >
-                  &#8250;
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-
-            {/* ── SERVICES ── */}
-      <section id="services" className="py-16 sm:py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="mb-10 sm:mb-12">
-            <p className="text-amber-500 text-xs font-bold tracking-widest uppercase mb-2">خدماتنا</p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-zinc-900">{services.title}</h2>
-            <p className="text-zinc-500 mt-2 max-w-xl text-sm sm:text-base">{services.subtitle}</p>
-          </div>
-          {services.items && services.items.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {services.items.map((s) => (
-                <div
-                  key={s.id}
-                  className="group p-6 sm:p-8 rounded-xl sm:rounded-2xl border border-zinc-100 hover:border-amber-300 hover:bg-amber-50 transition-all duration-300"
-                >
-                  <div className="text-3xl sm:text-4xl mb-3 sm:mb-4">{s.icon}</div>
-                  <h3 className="text-lg sm:text-xl font-bold text-zinc-900 mb-2">{s.name}</h3>
-                  <p className="text-zinc-500 text-sm leading-relaxed mb-4">{s.description}</p>
-                  {s.features && s.features.length > 0 && (
-                    <ul className="space-y-1.5">
-                      {s.features.map((f, idx) => (
-                        <li key={idx} className="flex items-center gap-2 text-sm text-zinc-600">
-                          <span className="w-4 h-4 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs flex-shrink-0">✓</span>
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-
-      {/* ── WHY US ── */}
-      <section id="about" className="py-16 sm:py-24 bg-zinc-950">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="mb-10 sm:mb-12 text-center">
-            <p className="text-amber-400 text-xs font-bold tracking-widest uppercase mb-2">لماذا نحن</p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-white">{whyChooseUs.title}</h2>
-          </div>
-          {whyChooseUs.features && whyChooseUs.features.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8">
-              {whyChooseUs.features.map((f) => (
-                <div key={f.id} className="text-center">
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 bg-zinc-800 rounded-xl sm:rounded-2xl flex items-center justify-center text-xl sm:text-2xl mx-auto mb-3 sm:mb-4">
-                    {f.icon}
-                  </div>
-                  <h3 className="text-white font-semibold mb-1 text-sm sm:text-base">{f.title}</h3>
-                  <p className="text-zinc-500 text-xs sm:text-sm leading-relaxed">{f.description}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ── TESTIMONIALS ── */}
-      <section className="py-16 sm:py-24 bg-zinc-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="mb-10 sm:mb-12">
-            <p className="text-amber-500 text-xs font-bold tracking-widest uppercase mb-2">آراء العملاء</p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-zinc-900">{testimonials.title}</h2>
-          </div>
-          {testimonials.reviews && testimonials.reviews.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {testimonials.reviews.map((r) => (
-                <div key={r.id} className="bg-white p-6 sm:p-8 rounded-xl sm:rounded-2xl border border-zinc-100">
-                  <div className="flex gap-0.5 mb-4">
-                    {[...Array(r.rating)].map((_, i) => (
-                      <span key={i} className="text-amber-400 text-sm sm:text-base">★</span>
-                    ))}
-                  </div>
-                  <p className="text-zinc-600 text-sm leading-relaxed mb-5 sm:mb-6">"{r.comment}"</p>
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-zinc-900 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                      {r.name.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-zinc-900 text-sm">{r.name}</div>
-                      <div className="text-xs text-zinc-400">{r.position}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ── CTA ── */}
-      <section className="py-16 sm:py-24 bg-amber-400">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 sm:gap-8">
+        {/* Header row */}
+        <div
+          className={`flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-14 transition-all duration-700 ${
+            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          }`}
+        >
           <div>
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-zinc-900 mb-2">{cta.title}</h2>
-            <p className="text-zinc-700 text-sm sm:text-base">{cta.subtitle}</p>
+            <Label text="Our Services" visible={visible} />
+            <h2 className="text-4xl sm:text-5xl font-black tracking-tight leading-tight">
+              {t.services.title}
+            </h2>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto flex-shrink-0">
-            <a
-              href={`tel:${phoneLink}`}
-              className="bg-zinc-900 hover:bg-zinc-700 text-white px-6 sm:px-7 py-3 rounded-full text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              📞 {cta.button}
-            </a>
-            <a
-              href={`https://wa.me/${whatsappLink}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-white hover:bg-zinc-100 text-zinc-900 px-6 sm:px-7 py-3 rounded-full text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              💬 {cta.whatsappButton}
-            </a>
-          </div>
+          <Link
+            href={data.services.ctaHref}
+            className="inline-flex items-center gap-2 border-2 border-[#0a0a0a] text-[#0a0a0a] font-bold px-6 py-3 rounded-lg text-sm hover:bg-[#0a0a0a] hover:text-white transition-all shrink-0"
+          >
+            {t.services.cta}
+            <ArrowRight size={14} />
+          </Link>
         </div>
-      </section>
 
-      {/* ── {/* ── FOOTER ── */}
-<footer id='contact' className='bg-zinc-950 text-white py-12 sm:py-16'>
-  <div className='max-w-7xl mx-auto px-4 sm:px-6'>
-    <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 mb-10 sm:mb-12'>
-
-      {/* Company info */}
-      <div>
-        <h3 className='text-base font-bold text-amber-400 mb-3 sm:mb-4'>{company.name}</h3>
-        <p className='text-zinc-500 text-sm leading-relaxed mb-4'>{footer.description}</p>
-        <div className='space-y-2 text-sm text-zinc-400'>
-
-          <p><a href='tel:01273640711' className='hover:text-amber-400 transition-colors'>📞 01273640711</a></p>
-          <p><a href='tel:01500038865' className='hover:text-amber-400 transition-colors'>📞 01500038865</a></p>
-          <p><a href='tel:01027394820' className='hover:text-amber-400 transition-colors'>📞 01027394820</a></p>
-          <p><a href='tel:01157443640' className='hover:text-amber-400 transition-colors'>📞 01157443640</a></p>
-
-          <p><a href='https://www.facebook.com/share/1ATnxTiRbt/' target='_blank' rel='noopener noreferrer' className='hover:text-amber-400 transition-colors'>📘 صفحتنا على فيسبوك</a></p>
-
-          <p><a href={`mailto:${company.email}`} className='hover:text-amber-400 transition-colors break-all'>📧 {company.email}</a></p>
-          <p>📍 {company.location}</p>
-        </div>
-      </div>
-
-      {/* Quick links */}
-      <div>
-        <h4 className='text-sm font-semibold text-zinc-300 mb-3 sm:mb-4'>{footer.quickLinks}</h4>
-        <ul className='space-y-2'>
-          {navigation.map((item, i) => (
-            <li key={i}><a href={item.link} className='text-sm text-zinc-500 hover:text-amber-400 transition-colors'>{item.label}</a></li>
+        {/* Cards grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {merged.map((s, i) => (
+            <ServiceCard key={s.id} service={s} visible={visible} delay={i * 70} />
           ))}
-        </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ServiceCard({ service, visible, delay }) {
+  return (
+    <Link
+      href={service.href}
+      className={`group flex flex-col bg-white border border-gray-100 rounded-2xl overflow-hidden hover:border-[#C8102E]/30 hover:shadow-xl hover:shadow-red-900/5 transition-all duration-300 ${
+        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+      }`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
+      {/* Image */}
+      <div className="relative h-48 overflow-hidden bg-gray-100">
+        <Image
+          src={service.image}
+          alt={service.title}
+          fill
+          className="object-cover group-hover:scale-105 transition-transform duration-500"
+          unoptimized
+        />
+        {/* Color accent top bar */}
+        <div
+          className="absolute top-0 inset-x-0 h-[3px]"
+          style={{ background: service.color }}
+        />
       </div>
 
-      {/* Services */}
-      <div>
-        <h4 className='text-sm font-semibold text-zinc-300 mb-3 sm:mb-4'>{footer.ourServices}</h4>
-        {services.items && services.items.length > 0 && (
-          <ul className='space-y-2'>
-            {services.items.map((s) => (
-              <li key={s.id}><a href='#services' className='text-sm text-zinc-500 hover:text-amber-400 transition-colors'>{s.icon} {s.name}</a></li>
-            ))}
-          </ul>
-        )}
+      {/* Body */}
+      <div className="p-6 flex flex-col gap-3 flex-1">
+        <h3 className="font-black text-[#0a0a0a] text-base leading-snug group-hover:text-[#C8102E] transition-colors duration-150">
+          {service.title}
+        </h3>
+        <p className="text-gray-500 text-sm leading-relaxed flex-1">
+          {service.desc}
+        </p>
+        <div className="flex items-center gap-1 text-xs font-bold text-[#C8102E] mt-1 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-200">
+          Learn more <ArrowRight size={12} />
+        </div>
       </div>
+    </Link>
+  );
+}
 
-      {/* Fleet */}
-      <div>
-        <h4 className='text-sm font-semibold text-zinc-300 mb-3 sm:mb-4'>أسطولنا</h4>
-        {fleet.vehicles && fleet.vehicles.length > 0 && (
-          <ul className='space-y-2'>
-            {fleet.vehicles.map((v) => (
-              <li key={v.id} className='text-sm text-zinc-500'>{v.icon} {v.name} — {v.capacity}</li>
-            ))}
-          </ul>
-        )}
+/* ═══════════════════════════════════════
+   STATS
+═══════════════════════════════════════ */
+function Stats({ data, t }) {
+  const [ref, visible] = useReveal();
+
+  const merged = data.stats.items.map((item, i) => ({
+    ...item,
+    label: t.stats.items[i],
+  }));
+
+  return (
+    <section ref={ref} className="relative py-28 px-6 overflow-hidden bg-[#0a0a0a]">
+      {/* Background image very subtle */}
+      <div className="absolute inset-0 z-0 opacity-15">
+        <Image
+          src={data.stats.backgroundImage}
+          alt=""
+          fill
+          className="object-cover"
+          unoptimized
+        />
       </div>
+      {/* Red top border */}
+      <div className="absolute top-0 inset-x-0 h-[3px] bg-[#C8102E] z-10" />
 
-    </div>
+      <div className="relative z-10 max-w-7xl mx-auto">
+        <div
+          className={`mb-14 transition-all duration-700 ${
+            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          }`}
+        >
+          <Label text="Track Record" visible={visible} dark />
+          <h2 className="text-4xl sm:text-5xl font-black tracking-tight text-white leading-tight">
+            {t.stats.title}
+          </h2>
+        </div>
 
-    <div className='border-t border-zinc-800 pt-6 sm:pt-8 text-center text-xs text-zinc-600'>
-      {footer.copyright}
-    </div>
-  </div>
-</footer>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/8 rounded-2xl overflow-hidden border border-white/8">
+          {merged.map((s, i) => (
+            <div
+              key={i}
+              className={`bg-[#111] p-10 flex flex-col gap-2 transition-all duration-500 ${
+                visible ? "opacity-100" : "opacity-0"
+              }`}
+              style={{ transitionDelay: `${i * 100}ms` }}
+            >
+              <span className="text-5xl sm:text-6xl font-black text-white tracking-tighter leading-none">
+                {s.value}
+              </span>
+              <span className="text-gray-400 text-xs font-semibold uppercase tracking-widest mt-2">
+                {s.label}
+              </span>
+              <div className="w-6 h-0.5 bg-[#C8102E] mt-2" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════
+   SHARED — Section Label
+═══════════════════════════════════════ */
+function Label({ text, visible, dark = false }) {
+  return (
+    <div
+      className={`flex items-center gap-2 mb-3 transition-all duration-500 ${
+        visible ? "opacity-100" : "opacity-0"
+      }`}
+    >
+      <div className="w-5 h-px bg-[#C8102E]" />
+      <span
+        className={`text-xs font-bold tracking-[0.2em] uppercase ${
+          dark ? "text-gray-400" : "text-[#C8102E]"
+        }`}
+      >
+        {text}
+      </span>
     </div>
   );
 }
+
+/* ═══════════════════════════════════════
+   INLINE SVG ICONS — zero emoji
+═══════════════════════════════════════ */
+function ArrowRight({ size = 16, color = "currentColor" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12h14M12 5l7 7-7 7" />
+    </svg>
+  );
+}
+function Check({ size = 16, color = "currentColor" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6L9 17l-5-5" />
+    </svg>
+  );
+}
+function Menu({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+function X({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+/* ═══════════════════════════════════════
+   GLOBAL STYLES
+═══════════════════════════════════════ */
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;0,9..40,900&family=Tajawal:wght@300;400;700;800&display=swap');
+
+  @keyframes fadein {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes fadein-up {
+    from { opacity: 0; transform: translateY(28px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-fadein      { animation: fadein    0.6s ease both; }
+  .animate-fadein-up   { animation: fadein-up 0.7s ease 0.1s both; }
+  .animate-fadein-up2  { animation: fadein-up 0.7s ease 0.25s both; }
+`;

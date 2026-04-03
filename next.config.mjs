@@ -7,6 +7,7 @@ const nextConfig = {
         hostname: 'cdn.jsdelivr.net',
       },
     ],
+    domains: ["images.unsplash.com"],
   },
 };
 

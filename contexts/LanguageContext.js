@@ -12,18 +12,18 @@ export const useLanguage = () => {
   return context;
 };
 
-export const LanguageProvider = ({ children }) => {
-  const [language, setLanguage] = useState('en'); // Default: English
+const SUPPORTED = ['en', 'ar', 'es'];
 
-  // حفظ اللغة في localStorage
+export const LanguageProvider = ({ children }) => {
+  const [language, setLanguage] = useState('en');
+
   useEffect(() => {
     const savedLanguage = localStorage.getItem('language');
-    if (savedLanguage && (savedLanguage === 'ar' || savedLanguage === 'en')) {
+    if (savedLanguage && SUPPORTED.includes(savedLanguage)) {
       setLanguage(savedLanguage);
       document.documentElement.dir = savedLanguage === 'ar' ? 'rtl' : 'ltr';
       document.documentElement.lang = savedLanguage;
     } else {
-      // Default: English
       localStorage.setItem('language', 'en');
       document.documentElement.dir = 'ltr';
       document.documentElement.lang = 'en';
@@ -34,13 +34,12 @@ export const LanguageProvider = ({ children }) => {
     const newLanguage = language === 'ar' ? 'en' : 'ar';
     setLanguage(newLanguage);
     localStorage.setItem('language', newLanguage);
-    // تغيير اتجاه الصفحة
     document.documentElement.dir = newLanguage === 'ar' ? 'rtl' : 'ltr';
     document.documentElement.lang = newLanguage;
   };
 
   const changeLanguage = (lang) => {
-    if (lang === 'ar' || lang === 'en') {
+    if (SUPPORTED.includes(lang)) {          // ✅ يقبل en و ar و es
       setLanguage(lang);
       localStorage.setItem('language', lang);
       document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
@@ -49,11 +48,11 @@ export const LanguageProvider = ({ children }) => {
   };
 
   return (
-    <LanguageContext.Provider value={{ 
-      language, 
-      toggleLanguage, 
+    <LanguageContext.Provider value={{
+      language,
+      toggleLanguage,
       changeLanguage,
-      isRTL: language === 'ar'
+      isRTL: language === 'ar',
     }}>
       {children}
     </LanguageContext.Provider>
